@@ -169,16 +169,21 @@ where
         // at the end of the scroll region, and add lines starting there.
         //
         // ┌─Screen───────────────────────┐
-        // │┌╌Scroll region╌╌╌╌╌╌╌╌╌╌╌╌╌╌┐│
+        // │┌╌Scroll region═════════════┐│
         // │┆                            ┆│
         // │┆                            ┆│
         // │┆                            ┆│
-        // │█╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┘│
+        // │█════════════════════════════┘│
         // │╭─Viewport───────────────────╮│
         // ││                            ││
         // │╰────────────────────────────╯│
         // └──────────────────────────────┘
-        queue!(writer, SetScrollRegion(1..area.top()))?;
+        //
+        // NB: Clamp area.top() to at least 1 to avoid invalid scroll region (1..0)
+        // when viewport is at top of screen. An invalid range causes undefined
+        // behavior that manifests as text disappearing in some terminals.
+        let scroll_region_top = area.top().max(1);
+        queue!(writer, SetScrollRegion(1..scroll_region_top))?;
 
         // NB: we are using MoveTo instead of set_cursor_position here to avoid messing with the
         // terminal's last_known_cursor_position, which hopefully will still be accurate after we
