@@ -129,7 +129,7 @@ pub fn parse_patch(patch: &str) -> Result<ApplyPatchArgs, ParseError> {
     } else {
         ParseMode::Lenient
     };
-    parse_patch_text(patch, mode)
+    parse_with_auto_repair(patch, mode)
 }
 
 enum ParseMode {
@@ -202,6 +202,16 @@ fn parse_patch_text(patch: &str, mode: ParseMode) -> Result<ApplyPatchArgs, Pars
     })
 }
 
+/// Main entry point for parsing with auto-repair fallback.
+pub fn parse_apply_patch(patch: &str) -> Result<ApplyPatchArgs, ParseError> {
+    let mode = if PARSE_IN_STRICT_MODE {
+        ParseMode::Strict
+    } else {
+        ParseMode::Lenient
+    };
+    parse_with_auto_repair(patch, mode)
+}
+
 /// Checks the start and end lines of the patch text for `apply_patch`,
 /// returning an error if they do not match the expected markers.
 fn check_patch_boundaries_strict(lines: &[&str]) -> Result<(), ParseError> {
@@ -260,6 +270,80 @@ fn check_start_and_end_lines_strict(
         _ => Err(InvalidPatchError(String::from(
             "The last line of the patch must be '*** End Patch'",
         ))),
+    }
+}
+
+/// Auto-repair squashed patch lines that result from model output errors.
+/// This handles patterns like:
+/// - `;+added_line` (missing newline between code and diff prefix)
+/// - `}+added_line` (missing newline after closing brace)
+/// - `; +line` (space between delimiter and prefix)
+fn auto_repair_squashed_lines(patch: &str) -> String {
+    let lines: Vec<&str> = patch.lines().collect();
+    let mut repaired_lines = Vec::new();
+
+    for line in lines {
+        if line.starts_with('+') || line.starts_with('-') || line.starts_with(' ') {
+            // Check for squashed patterns: code followed immediately by +/-
+            // Common patterns: `;+`, `}+`, `)+`, `>+`, `,+`, `]+`, etc.
+            if let Some(pos) = line
+                .find(";+")
+                .or_else(|| line.find("}+"))
+                .or_else(|| line.find(")+"))
+                .or_else(|| line.find(">+"))
+                .or_else(|| line.find(",+"))
+                .or_else(|| line.find("]+"))
+            {
+                let prefix = &line[..pos + 1]; // e.g., ";" or "}"
+                let remainder = &line[pos + 1..]; // e.g., "+added_line"
+                if let Some((diff_marker, content)) = remainder.split_once(['+', '-']) {
+                    repaired_lines.push(format!(
+                        "{}{}",
+                        prefix.trim_end_matches('+').trim_end_matches('-'),
+                        diff_marker
+                    ));
+                    repaired_lines.push(content.to_string());
+                    continue;
+                }
+            }
+            // Check for `; +line` pattern (space between code and diff marker)
+            if let Some(pos) = line
+                .find("; +")
+                .or_else(|| line.find("} +"))
+                .or_else(|| line.find(") +"))
+                .or_else(|| line.find(", +"))
+            {
+                let code = &line[..pos];
+                let remainder = &line[pos + 3..]; // skip "; +"
+                if let Some((_, content)) = remainder.split_once(' ') {
+                    repaired_lines.push(code.to_string());
+                    repaired_lines.push(format!("+{}", content));
+                    continue;
+                }
+            }
+        }
+        repaired_lines.push(line.to_string());
+    }
+
+    repaired_lines.join("\n")
+}
+
+/// Attempts to parse with auto-repair if strict parsing fails in lenient mode.
+fn parse_with_auto_repair(patch: &str, mode: ParseMode) -> Result<ApplyPatchArgs, ParseError> {
+    match parse_patch_text(patch, mode) {
+        Ok(result) => Ok(result),
+        Err(e) => {
+            if matches!(mode, ParseMode::Lenient) {
+                let repaired = auto_repair_squashed_lines(patch);
+                if repaired != patch {
+                    parse_patch_text(&repaired, mode)
+                } else {
+                    Err(e)
+                }
+            } else {
+                Err(e)
+            }
+        }
     }
 }
 

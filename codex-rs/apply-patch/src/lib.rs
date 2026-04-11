@@ -395,10 +395,14 @@ async fn derive_new_contents_from_chunks(
         original_lines.pop();
     }
 
+    // Check if original file had a trailing newline to preserve its EOF style
+    let original_has_trailing_newline = original_contents.ends_with('\n');
+
     let replacements = compute_replacements(&original_lines, path_abs.as_path(), chunks)?;
     let new_lines = apply_replacements(original_lines, &replacements);
     let mut new_lines = new_lines;
-    if !new_lines.last().is_some_and(String::is_empty) {
+    // Only add trailing newline if the original file had one
+    if original_has_trailing_newline && !new_lines.last().is_some_and(String::is_empty) {
         new_lines.push(String::new());
     }
     let new_contents = new_lines.join("\n");
