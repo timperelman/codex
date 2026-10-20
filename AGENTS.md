@@ -1,5 +1,8 @@
 # Rust/codex-rs
 
+
+**Authenticated source-to-Python fallback (2026-10-20):** DNS, clone, or container-network failure alone does not establish that Python tests are blocked when authenticated GitHub source reads and a separate Python backend are available. Follow the exact-commit/blob transfer and `source_route_cli.py` preflight in the [AGC CI Governor SSOT](https://github.com/timperelman/agent-coordination/blob/main/docs/CI_GOVERNOR_SSOT.md) when inputs are available. Preserve this repository's task authority, security/isolation, privacy and resource gates; do not use paid CI or audio, substitute invented tests, or call a partial source run a full checkout.
+
 In the codex-rs folder where the rust code lives:
 
 - Crate names are prefixed with `codex-`. For example, the `core` folder's crate is named `codex-core`
